@@ -4,6 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Newtonsoft;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
 namespace FSAdapter
 {
     public partial class FSAdapter
@@ -86,7 +90,7 @@ namespace FSAdapter
                 string inner_msg = "";
                 if (ex.InnerException != null)
                     inner_msg = ex.InnerException.Message;
-                //Log.ErrorFormat("Parse Event Type Failed: exception={0}, inner={1}", error_msg, inner_msg);
+                Log.Error(ex, $"Parse Event Type Failed: inner={inner_msg}");
             }
 
             return type;

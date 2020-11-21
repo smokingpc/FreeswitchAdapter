@@ -12,12 +12,11 @@ namespace FSAdapter
 {
     internal static class Extension
     {
-        internal static Int64 ToLinuxEpoch64(this DateTime dt)
-        {
-            DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
-            return Convert.ToInt64((dt.ToUniversalTime() - epoch).TotalMilliseconds);
-        }
-
+        //internal static Int64 ToLinuxEpoch64(this DateTime dt)
+        //{
+        //    DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
+        //    return Convert.ToInt64((dt.ToUniversalTime() - epoch).TotalMilliseconds);
+        //}
     }
 
     internal static class XMLUtils
@@ -59,17 +58,17 @@ namespace FSAdapter
     internal static class Utils
     { 
         //目前只能吃microsecond與second兩種epoch
-        internal static DateTime FromLinuxEpoch32(Int32 second)
-        {
-            DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
-            return epoch.AddSeconds(second);
-        }
+        //internal static DateTime FromLinuxEpoch32(Int32 second)
+        //{
+        //    DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
+        //    return epoch.AddSeconds(second);
+        //}
 
-        internal static DateTime FromLinuxEpoch64(Int64 microsecond)
-        {
-            DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
-            return epoch.AddMilliseconds(microsecond / 1000).ToLocalTime();
-        }
+        //internal static DateTime FromLinuxEpoch64(Int64 microsecond)
+        //{
+        //    DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
+        //    return epoch.AddMilliseconds(microsecond / 1000).ToLocalTime();
+        //}
 
         //刪除指定目錄下所有檔案與sub-folders
         internal static void DeleteAll(string path)

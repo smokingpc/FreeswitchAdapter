@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
+using Newtonsoft.Json.Linq;
 
 namespace FSAdapter
 {
@@ -36,10 +37,6 @@ namespace FSAdapter
         public event DelegateEventJoinConference OnJoinRoom;
         public event DelegateEventLeaveConference OnLeaveRoom;
         
-
-        //因為必須在conference裡面中轉各個customized header，不得已只好自己維護live channel的資料...
-        //private Dictionary<string, JObject> CallLegs = new Dictionary<string, JObject>();
-
         //FreeSwitch Event是Async event，所以先用queue存下來再依序處理，避免time issue
         //這個queue用來放event回傳的JSON string
         private ConcurrentQueue<string> EventJsonQueue = new ConcurrentQueue<string>();
@@ -73,7 +70,7 @@ namespace FSAdapter
             }
             catch (Exception ex)
             {
-                Log.ErrorFormat("SubscibeEvent Failed! StackTrack:{0}, Message:{1}",ex.StackTrace,ex.Message);
+                Log.Error(ex, "SubscibeEvent Failed!");
             }
             return ret;
         }
@@ -103,26 +100,25 @@ namespace FSAdapter
                     try
                     {
                         msg = ReadMessages(reader);
-                        Log.DebugFormat("connect to ESL: [{0}]", msg);
+                        Log.Debug($"connect to ESL: [{msg}]");
 
                         string cmd = "auth " + AuthPwd;
                         WriteCmd(writer, cmd);
                         msg = ReadCmdResp(reader);
-                        Log.DebugFormat("ESL auth: [{0}]", msg);
+                        Log.Debug($"ESL auth: [{msg}]");
 
                         cmd = "event json " + event_list;
                         WriteCmd(writer, cmd);
-                        Log.DebugFormat("subscribe events: [{0}]", cmd);
+                        Log.Debug($"subscribe events: [{cmd}]");
 
                         msg = ReadCmdResp(reader);
-                        Log.DebugFormat("subscribe result: [{0}]", msg);
+                        Log.Debug($"subscribe result: [{msg}]");
                     }
                     catch (Exception ex)
                     {
-                        Log.ErrorFormat("ThreadEvent Exception: {0}", ex.Message);
+                        Log.Error(ex, "ThreadEvent Exception");
                         if (ex.InnerException != null)
-                            Log.ErrorFormat("InnerException: {0}", ex.InnerException.Message);
-                        //System.Diagnostics.Debug.WriteLine("[thread event exception] => " + ex.Message);
+                            Log.Error("InnerException: {ex.InnerException.Message}");
                     }
 
                     while (false == EventStop.Wait(1))
@@ -144,20 +140,20 @@ namespace FSAdapter
                         }
                         catch (Exception ex)
                         {
-                            Log.ErrorFormat("ThreadEvent Exception: {0}", ex.Message);
+                            Log.Error(ex, "ThreadEvent Exception");
                             if (ex.InnerException != null)
-                                Log.ErrorFormat("InnerException: {0}", ex.InnerException.Message);
+                                Log.Error("InnerException: {ex.InnerException.Message}");
                         }
                     }
 
                     WriteCmd(writer, "noevents");
                     msg = ReadCmdResp(reader);
-                    Log.DebugFormat("unsubscribe event: [{0}]", msg);
+                    Log.Debug($"unsubscribe event: [{msg}]");
                 }
             }
             catch (System.InvalidOperationException ex)
             {
-                Log.ErrorFormat("沒有開啟FreeSwtichService,ex message:{0},ex stacktrace:{1}",ex.Message,ex.StackTrace);
+                Log.Error(ex, "Unexcpected Exception");
                 if (null != OnException)
                     OnException(null, null);
             }
@@ -172,10 +168,8 @@ namespace FSAdapter
                 if (!pop_ok || json == null || json == "")
                     continue;
 
-                if (OnEventRawString != null)
-                    OnEventRawString(this, json);
+                OnEventRawString?.Invoke(this, json);
 
-                string call_uuid = "";
                 JObject jdata = null;
                 EVENT_MONITOR_TYPE type = ParseEventType(json, out jdata);
 
@@ -185,70 +179,36 @@ namespace FSAdapter
                 switch (type)
                 {
                     case EVENT_MONITOR_TYPE.CALL_TO_SWITCH:
-                        call_uuid = jdata["Channel-Call-UUID"].ToString();
-                        CallLegs[call_uuid] = jdata;
-                        if (null != OnCall)
-                            OnCall(this, new CCallEvent(jdata));
+                        OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
                     case EVENT_MONITOR_TYPE.SWITCH_CALL_USER:
-                        call_uuid = jdata["Channel-Call-UUID"].ToString();
-                        CallLegs[call_uuid] = jdata;
-                        if (null != OnCall)
-                            OnCall(this, new CCallEvent(jdata));
+                        OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
                     case EVENT_MONITOR_TYPE.ANSWER:
-                        if (null != OnAnswer)
-                            OnAnswer(this, new CAnswerEvent(jdata));
+                        OnAnswer?.Invoke(this, new CAnswerEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.HANGUP:
-                        //call_uuid = jdata["Channel-Call-UUID"].ToString();
-                        //CallLegs.Remove(call_uuid);
-                        if (null != OnHangUp)
-                            OnHangUp(this, new CHangUpEvent(jdata));
+                        OnHangUp?.Invoke(this, new CHangUpEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.DESTROY_CALL:
-                        call_uuid = jdata["Channel-Call-UUID"].ToString();
-                        CallLegs.Remove(call_uuid);
-                        if (null != OnCallDestroy)
-                            OnCallDestroy(this, new CCallEvent(jdata));
+                        OnCallDestroy?.Invoke(this, new CCallEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.CONFERENCE_CREATE:
-                        if (null != OnRoomCreate)
-                            OnRoomCreate(this, new CConferenceCreateEvent(jdata));
+                        OnRoomCreate?.Invoke(this, new CConferenceCreateEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.CONFERENCE_DELETE:
-                        if (null != OnRoomDelete)
-                            OnRoomDelete(this, new CConferenceDeleteEvent(jdata));
+                        OnRoomDelete?.Invoke(this, new CConferenceDeleteEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.JOIN_CONFERENCE:
-                        if (null != OnJoinRoom)
-                        {
-                            string call_id = jdata["Caller-Unique-ID"].ToString();
-
-                            JObject channel = null;
-                            if (CallLegs.ContainsKey(call_id))
-                                channel = CallLegs[call_id];
-
-                            OnJoinRoom(this, new CJoinConferenceEvent(jdata, channel));
-                        }
+                        OnJoinRoom?.Invoke(this, new CJoinConferenceEvent(jdata));
                         break;
                     case EVENT_MONITOR_TYPE.LEAVE_CONFERENCE:
-                        if (null != OnLeaveRoom)
-                        {
-                            string call_id = jdata["Caller-Unique-ID"].ToString();
-
-
-                            JObject leg = null;
-                            if (CallLegs.ContainsKey(call_id))
-                                leg = CallLegs[call_id];
-
-                            OnLeaveRoom(this, new CLeaveConferenceEvent(jdata, leg));
-                        }
+                        OnLeaveRoom?.Invoke(this, new CLeaveConferenceEvent(jdata));
                         break;
                     default:
-                        Log.WarnFormat("Unsupported event type {0}, skip it...", type.ToString());
+                        Log.Warn($"Unsupported event type {type.ToString()}, skip it...");
                         break;
                 }
             }

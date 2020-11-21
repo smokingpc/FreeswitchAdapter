@@ -1,4 +1,8 @@
 ﻿using System;
+using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Text;
+using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,26 +11,52 @@ using System.Threading.Tasks;
 
 using System.Xml;
 using System.Xml.Schema;
+using NLog;
 
 namespace FSAdapter
 {
-	// All API here use XPath Select to find node from xml.
-	public partial class FSAdapter
-	{
-		//CTX is short term of "Context"
-		private static readonly string Conference_Ctx = "default";
-		private static readonly string Dialplan_SIP = "sip_uri";
-		private static readonly string Dialplan_Conf = "sip_conference";
-		//dialplan的預設Context名稱，很多地方會引用到
-		private static readonly string Dialplan_Ctx = "sip-dialplan";
-		private static readonly string DialplanFile = Dialplan_Ctx + ".xml";
-		//ACL預設list名稱
-		private static readonly string AclListName = "sip-acl";
+    public static class FSConfigTool
+    {
+		public static string ConfigPath { get; set; }
 
-		private static readonly string CallGroup = "sip";
-		private static readonly string UserFolder = CallGroup;
-		private static readonly string UserCfgFile = CallGroup + ".xml";
-		private static readonly string GlobalVarsFile = "vars.xml";
+		private static readonly string DefaultLinuxConfigDir = Path.Combine(new string[] { "usr", "local", "freeswitch", "conf" });
+		private static readonly string DefaultWindowsConfigDir = Path.Combine(new string[] { @"C:\Program Files", "FreeSWITCH", "conf" });
+
+		//CTX is short term of "Context"
+		private const string Conference_Ctx = "default";
+		private const string Dialplan_SIP = "sip_uri";
+		private const string Dialplan_Conf = "sip_conference";
+		//dialplan的預設Context名稱，很多地方會引用到
+		private const string Dialplan_Ctx = "sip-dialplan";
+		private const string DialplanFile = Dialplan_Ctx + ".xml";
+		//ACL預設list名稱
+		private const string AclListName = "sip-acl";
+
+		private const string CallGroup = "sip";
+		private const string UserFolder = CallGroup;
+		private const string UserCfgFile = CallGroup + ".xml";
+		
+		private const string MainFile = "switch.conf.xml";
+		private const string GlobalVarsFile = "vars.xml";
+		private const string ConferenceFile = "conference.conf.xml";
+		private const string SMSFile = "sms.conf.xml";
+		private const string SipProfileInternalFile = "internal.xml";
+		private const string SipProfileExternalFile = "external.xml";
+		private const string AclFile = "acl.conf.xml";
+		private const string EventSocketFile = "event_socket.conf.xml";
+		private const string ModulesFile = "modules.conf.xml";
+
+		private static Logger Log = LogManager.GetLogger("FSConfigTool");
+
+		static FSConfigTool()
+		{
+			//detect OS to set default config file.
+			OperatingSystem os = Environment.OSVersion;
+			if (os.Platform == PlatformID.Win32NT)
+				ConfigPath = DefaultWindowsConfigDir;
+			else if (os.Platform == PlatformID.Unix)
+				ConfigPath = DefaultLinuxConfigDir;
+		}
 
 		//  vars.xml內的資料樣本
 		//	<X-PRE-PROCESS cmd="set" data="force_local_ip_v4=172.16.65.145"/>
@@ -34,10 +64,20 @@ namespace FSAdapter
 		//FreeSwitch不能直接改 local_ip_v4 變數，它每分鐘會refresh一次
 		//要用這種方法去強迫它變更，這API必須用在FreeSwitch Server有多IP或多網卡的狀況。
 		//如果不強迫指定，它只會抓OS回報的第一個IP(順序不定)
-		public void SetFreeSwitchIP(string ip)
+		/// <summary>
+		/// 在vars.xml裡設定 force_local_ip_v4 變數，以強迫指定 FreeSwitch的local ip
+		/// </summary>
+		/// <param name="config_path">
+		/// FreeSwitch Config Path，包括 conf 目錄。例如 "/usr/local/freeswitch/conf"
+		///  或 "C:\Program Files\FreeSwitch\conf"
+		///	</param>
+		/// <param name="ip">要指定的IP</param>
+		public static void SetFreeSwitchIP(string ip)
 		{
-			string path = GetServiceBinPath() + "\\conf";
-			string file = path + "\\" + GlobalVarsFile;
+			string file = Path.Combine(new string[] { ConfigPath, GlobalVarsFile });
+
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			//用XPath找 include下的X-PRE-PROCESS 節點，並且該節點attribute為 cmd='set' 與 data='local_ip_v4=$${force_local_ip_v4}'
 			//資料樣本  <X-PRE-PROCESS cmd="set" data="local_ip_v4=$${force_local_ip_v4}"/>
@@ -54,7 +94,7 @@ namespace FSAdapter
 			node = doc.SelectSingleNode(xpath);
 			if (node == null)
 			{
-				Log.DebugFormat("node force_local_ip_v4 not found, add it");
+				Log.Debug("node force_local_ip_v4 not found, add it");
 
 				child = doc.CreateNode(XmlNodeType.Element, "X-PRE-PROCESS", null);
 				attribute = doc.CreateAttribute("cmd");
@@ -71,7 +111,7 @@ namespace FSAdapter
 			}
 			else
 			{
-				Log.DebugFormat("node force_local_ip_v4 modify to {0}", ip);
+				Log.Debug($"node force_local_ip_v4 modify to {ip}");
 				node.Attributes["data"].Value = string.Format("force_local_ip_v4={0}", ip);
 			}
 
@@ -94,14 +134,15 @@ namespace FSAdapter
 				node.AppendChild(child);
 			}
 			else
-				Log.ErrorFormat("local_ip_v4=$${force_local_ip_v4} exists, skip add node");
+				Log.Error("local_ip_v4=$${force_local_ip_v4} exists, skip add node");
 
 			XMLUtils.SaveXML(doc, file);
 		}
-		public void ResetFreeSwitchIP()
+		public static void ResetFreeSwitchIP()
 		{
-			string path = GetServiceBinPath() + "\\conf";
-			string file = path + "\\" + GlobalVarsFile;
+			string file = Path.Combine(new string[] { ConfigPath, GlobalVarsFile });
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			//用XPath找 include下的X-PRE-PROCESS 節點，並且該節點attribute為 cmd='set' 與 data='local_ip_v4=$${force_local_ip_v4}'
 			//資料樣本  <X-PRE-PROCESS cmd="set" data="local_ip_v4=$${force_local_ip_v4}"/>
@@ -129,7 +170,7 @@ namespace FSAdapter
 		//因為FreeSwitch設定太多太複雜，所以弄了這個API。但注意這API只會修改internal sip profile。
 		//如果要設定external profile，使用者要自己呼叫SetSipProfileExternal()去綁定正確的context與ACL。
 		//(dialplan與user account還是可以沿用)
-		public void ResetDefaultConfig()
+		public static void ResetDefaultConfig()
 		{
 			ResetDialplan();
 			ResetSipUser();
@@ -139,10 +180,11 @@ namespace FSAdapter
 		}
 
 		//清掉指定的Conference設定，重新填回預設值
-		public void ResetConferenceConfig()
+		public static void ResetConferenceConfig()
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "conference.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", ConferenceFile });
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/profiles/profile[@name='{0}']", Conference_Ctx);
@@ -160,7 +202,7 @@ namespace FSAdapter
 			attr_map["name"] = Conference_Ctx;
 			child = XMLUtils.CreateElementNode(doc, "profile", attr_map);
 			parent.AppendChild(child);
-			
+
 			//切換到 <profile>
 			parent = child;
 			attr_map.Clear();
@@ -208,10 +250,11 @@ namespace FSAdapter
 		}
 
 		//SMS設定 (SIP Message)
-		public void EnableSipMessage()
+		public static void EnableSipMessage()
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "sms.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", SMSFile });
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = "/configuration/modules/load[@module='mod_sms']";
@@ -232,12 +275,13 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 			else
-				Log.ErrorFormat("node [{0}] not found, skip...", xpath);
+				Log.Error($"node [{xpath}] not found, skip...");
 		}
-		public void DisableSipMessage()
+		public static void DisableSipMessage()
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "sms.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", SMSFile });
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = "/configuration/modules/load[@module='mod_sms']";
@@ -249,15 +293,15 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 			else
-				Log.ErrorFormat("node [{0}] not found, skip...", xpath);
+				Log.Error($"node [{xpath}] not found, skip...");
 		}
 
 		//清空Dialplan設定檔，重建預設的設定(但各個dialplan需要自己加)
-		public void ResetDialplan()
+		public static void ResetDialplan()
 		{
-			string path = GetServiceBinPath() + "\\conf\\dialplan";
-			string file = path + "\\" + DialplanFile;
-			
+			string path = Path.Combine(new string[] { ConfigPath, "dialplan" });
+			string file = Path.Combine(new string[] { path, DialplanFile });
+
 			Utils.DeleteAll(path);
 			File.Delete(file);
 
@@ -313,20 +357,23 @@ namespace FSAdapter
 			Directory.CreateDirectory(path + "\\" + Dialplan_Ctx);
 		}
 
-		public void SetSipDialplan(string regex)
+		public static void SetSipDialplan(string regex)
 		{
-			string path = string.Format("{0}\\conf\\dialplan\\{1}",GetServiceBinPath(), Dialplan_Ctx);
-			string file = string.Format("{0}\\{1}.xml", path, Dialplan_SIP);
+			string path = Path.Combine(new string[] { ConfigPath, "dialplan", Dialplan_Ctx });
+			string file = Path.Combine(new string[] { path, $"{ Dialplan_SIP }.xml" });
 
-			Log.DebugFormat("SetSipDialplan = {0}", regex);
+			if (Directory.Exists(path) == false)
+				Directory.CreateDirectory(path);
+
+			Log.Debug($"SetSipDialplan = {regex}");
 
 			//先處理regex：
 			//1.頭尾要加上^跟$
-			//2.要加大括號，不然設定裡那個 ${sip_id} 變數會拉不到資料
+			//2.最外面要加括號，不然設定裡那個 ${sip_id} 變數會拉不到資料
 			//範例： "sip-\d{4}" => 處理後變成 "^(sip-\d{4})$"
 			if (regex[0] == '^')
 				regex = regex.Substring(1);
-			if (regex[regex.Length-1] == '$')
+			if (regex[regex.Length - 1] == '$')
 				regex = regex.Substring(0, regex.Length - 2);
 
 			regex = string.Format("^({0})$", regex);
@@ -371,12 +418,15 @@ namespace FSAdapter
 
 		//注意：regex字串最外層一定要有個() 把整個ID包起來
 		//      不然會撥不通...因為裡面dest_id=$1 會抓不到
-		public void SetConferenceDialplan(string regex)
+		public static void SetConferenceDialplan(string regex)
 		{
-			string path = string.Format("{0}\\conf\\dialplan\\{1}", GetServiceBinPath(), Dialplan_Ctx);
-			string file = string.Format("{0}\\{1}.xml", path, Dialplan_Conf);
+			string path = Path.Combine(new string[] { ConfigPath, "dialplan", Dialplan_Ctx });
+			string file = Path.Combine(new string[] { path, $"{ Dialplan_Conf }.xml" });
 
-			Log.DebugFormat("SetConferenceDialplan = {0}", regex);
+			if (Directory.Exists(path) == false)
+				Directory.CreateDirectory(path);
+
+			Log.Debug($"SetConferenceDialplan = {regex}");
 
 			//先處理regex：
 			//1.頭尾要加上^跟$
@@ -438,10 +488,11 @@ namespace FSAdapter
 		//      例如<param name="context" value="sip_call"/>
 		//  <param name="apply-inbound-acl" value="xxxxx"/> 欄位　xxxxx要指定ACL list 名稱，
 		//      例如 <param name="apply-inbound-acl" value="domains"/>
-		public void SetSipProfileInternal(string dialplan, string acl_list)
+		public static void SetSipProfileInternal(string dialplan, string acl_list)
 		{
-			string path = GetServiceBinPath() + "\\conf\\sip_profiles";
-			string file = path + "\\" + "internal.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "sip_profiles", SipProfileInternalFile });
+			if (System.IO.File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = "/profile/settings/param[@name='context']";
@@ -496,11 +547,12 @@ namespace FSAdapter
 		}
 
 		//清空Sip User設定
-		public void ResetSipUser(bool clear_all = true)
+		public static void ResetSipUser(bool clear_all = true)
 		{
-			string path = GetServiceBinPath() + "\\conf\\directory";
-			string file = path + "\\" + UserCfgFile;
-			if(clear_all)
+			string path = Path.Combine(new string[] { ConfigPath, "directory" });
+			string file = Path.Combine(new string[] { path, UserCfgFile });
+
+			if (clear_all)
 				Utils.DeleteAll(path);
 			else
 			{
@@ -584,11 +636,12 @@ namespace FSAdapter
 			Directory.CreateDirectory(path + "\\" + UserFolder);
 		}
 		//增加一個SIP User (注意User ID不能重複)
-		public void AddSipUser(string id, string pwd)
+		public static void AddSipUser(string id, string pwd)
 		{
-			string path = GetServiceBinPath() + "\\conf\\directory\\" + UserFolder;
-			string file = string.Format("{0}\\{1}.xml", path, id);
-			
+			string file = Path.Combine(new string[] { ConfigPath, "directory", UserFolder, $"{id}.xml" });
+			if (File.Exists(file) == true)
+				File.Delete(file);
+
 			Dictionary<string, string> attr_map = new Dictionary<string, string>();
 			XmlDocument doc = new XmlDocument();
 			XmlNode child = null;
@@ -641,7 +694,7 @@ namespace FSAdapter
 			attr_map["value"] = string.Format("Extension {0}", id);
 			child = XMLUtils.CreateElementNode(doc, "variable", attr_map);
 			parent.AppendChild(child);
-			
+
 			attr_map.Clear();
 			attr_map["name"] = "effective_caller_id_number";
 			attr_map["value"] = id;
@@ -656,22 +709,24 @@ namespace FSAdapter
 			XMLUtils.SaveXML(doc, file);
 		}
 		//幹掉指定的SIP User
-		public void RemoveSipUser(string id)
+		public static void RemoveSipUser(string id)
 		{
-			string path = GetServiceBinPath() + "\\conf\\directory\\" + UserFolder;
-			string file = string.Format("{0}\\{1}.xml", path, id);
+			string file = Path.Combine(new string[] { ConfigPath, "directory", UserFolder, $"{id}.xml" });
+
 			if (File.Exists(file))
 				File.Delete(file);
 		}
 
 		//在指定的ACL List裡增加幾個allow與deny的 node  (List裡的 string必須為CIDR格式)
-		public void AddACL(List<string> allow_list, List<string> deny_list)
+		public static void AddACL(List<string> allow_list, List<string> deny_list)
 		{ AddACL(AclListName, allow_list, deny_list); }
+
 		//在指定的ACL List裡增加幾個allow與deny的 node  (List裡的 string必須為CIDR格式)
-		public void AddACL(string list_name, List<string> allow_list, List<string> deny_list)
+		public static void AddACL(string list_name, List<string> allow_list, List<string> deny_list)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "acl.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", AclFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/network-lists/list[@name='{0}']", list_name);
@@ -719,12 +774,13 @@ namespace FSAdapter
 			XMLUtils.SaveXML(doc, file);
 		}
 		//在指定的ACL List裡增加一個node (cidr_ip參數必須為CIDR格式)
-		public void AddACL(string cidr_ip, FSW_ACL action)
+		public static void AddACL(string cidr_ip, FS_ACL action)
 		{ AddACL(AclListName, cidr_ip, action); }
-		public void AddACL(string list_name, string cidr_ip, FSW_ACL action)
+		public static void AddACL(string list_name, string cidr_ip, FS_ACL action)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "acl.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", AclFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/network-lists/list[@name='{0}']", list_name);
@@ -737,9 +793,9 @@ namespace FSAdapter
 				XmlAttribute attribute = doc.CreateAttribute("cidr");
 				attribute.Value = cidr_ip;
 				new_node.Attributes.Append(attribute);
-				
+
 				attribute = doc.CreateAttribute("type");
-				attribute.Value = action.ToString(); 
+				attribute.Value = action.ToString();
 				new_node.Attributes.Append(attribute);
 
 				node.AppendChild(new_node);
@@ -747,10 +803,11 @@ namespace FSAdapter
 			}
 		}
 		//增加一個ACL List
-		public void AddAclList(string list_name, FSW_ACL action)
+		public static void AddAclList(string list_name, FS_ACL action)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "acl.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", AclFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/network-lists/list[@name='{0}']", list_name);
@@ -761,7 +818,7 @@ namespace FSAdapter
 			{
 				xpath = string.Format("/configuration/network-lists");
 				node = doc.SelectSingleNode(xpath);
-				
+
 				acl_list = doc.CreateNode(XmlNodeType.Element, "list", null);
 				XmlAttribute attribute = doc.CreateAttribute("name");
 				attribute.Value = list_name;
@@ -776,12 +833,13 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 		}
-		public void RemoveACL(string cidr_ip)
+		public static void RemoveACL(string cidr_ip)
 		{ RemoveACL(AclListName, cidr_ip); }
-		public void RemoveACL(string list_name, string cidr_ip)
+		public static void RemoveACL(string list_name, string cidr_ip)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "acl.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", AclFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/network-lists/list[@name='{0}']/node[@cidr='{1}']", list_name, cidr_ip);
@@ -793,10 +851,11 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 		}
-		public void RemoveAclList(string list_name)
+		public static void RemoveAclList(string list_name)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "acl.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", AclFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/network-lists/list[@name='{0}']", list_name);
@@ -808,11 +867,12 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 		}
-
-		public void SetEventSocketPwd(string pwd)
+		public static void SetEventSocketPwd(string pwd)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "event_socket.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", EventSocketFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
+
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = string.Format("/configuration/settings/param[@name='password']");
 
@@ -826,16 +886,17 @@ namespace FSAdapter
 		}
 
 		//砍掉default name的ACLList再重建....
-		public void ResetACL()
+		public static void ResetACL()
 		{
-			RemoveAclList(FSCtrl.AclListName);
-			AddAclList(FSCtrl.AclListName, FSW_ACL.deny);
+			RemoveAclList(AclListName);
+			AddAclList(AclListName, FS_ACL.deny);
 		}
 
-		public void EnableEventSocket()
+		public static void EnableEventSocket()
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "modules.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", ModulesFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = "/configuration/modules//load[@module='mod_event_socket']";
@@ -856,10 +917,11 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 		}
-		public void DisableEventSocket()
+		public static void DisableEventSocket()
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "modules.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", ModulesFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
 
 			XmlDocument doc = XMLUtils.LoadXML(file);
 			string xpath = "/configuration/modules//load[@module='mod_event_socket']";
@@ -871,10 +933,13 @@ namespace FSAdapter
 				XMLUtils.SaveXML(doc, file);
 			}
 		}
-		public void SetLogLevel(FSW_LOG_LEVEL level)
+		public static void SetLogLevel(FS_LOG_LEVEL level)
 		{
-			string path = GetServiceBinPath() + "\\conf\\autoload_configs";
-			string file = path + "\\" + "switch.conf.xml";
+			string file = Path.Combine(new string[] { ConfigPath, "autoload_configs", MainFile });
+			if (File.Exists(file) == false)
+				throw new FileNotFoundException($"config file not exist! => {file}");
+
+
 			XmlDocument doc = XMLUtils.LoadXML(file);
 
 			//XML的節點查詢用xpath語法....
@@ -884,5 +949,6 @@ namespace FSAdapter
 
 			XMLUtils.SaveXML(doc, file);
 		}
+
 	}
 }
