@@ -38,7 +38,7 @@ namespace FSAdapter
         LEAVE_CONFERENCE = 2005,
     }
 
-    public enum CALL_DIRECTION
+    public enum CALL_DIR
     {
         inbound = 0,
         outbound = 1,

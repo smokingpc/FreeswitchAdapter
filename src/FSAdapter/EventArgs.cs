@@ -184,11 +184,11 @@ namespace FSAdapter
             get 
             {
                 string ret = "";
-                if (Direction == CALL_DIRECTION.inbound)
+                if (Direction == CALL_DIR.inbound)
                 {
                     ret = JsonData["Caller-Orig-Caller-ID-Number"].ToString();
                 }
-                else if (Direction == CALL_DIRECTION.outbound)
+                else if (Direction == CALL_DIR.outbound)
                 {
                     ret = JsonData["Caller-Destination-Number"].ToString();
                 }
@@ -200,9 +200,9 @@ namespace FSAdapter
         public string RoomMemberID
         { get { return JsonData["Member-ID"].ToString(); } }
 
-        private CALL_DIRECTION Direction
+        private CALL_DIR Direction
         {
-            get { return (CALL_DIRECTION)Enum.Parse(typeof(CALL_DIRECTION), (JsonData["Call-Direction"].ToString())); }
+            get { return (CALL_DIR)Enum.Parse(typeof(CALL_DIR), (JsonData["Call-Direction"].ToString())); }
         }
 
         public CJoinConferenceEvent(string conference)
@@ -234,9 +234,9 @@ namespace FSAdapter
         public string LeaveMember
         { get { return JsonData["Member-ID"].ToString(); } }
 
-        private CALL_DIRECTION Direction
+        private CALL_DIR Direction
         {
-            get { return (CALL_DIRECTION)Enum.Parse(typeof(CALL_DIRECTION), (JsonData["Call-Direction"].ToString())); }
+            get { return (CALL_DIR)Enum.Parse(typeof(CALL_DIR), (JsonData["Call-Direction"].ToString())); }
         }
 
         //who leave this conference room?
@@ -245,11 +245,11 @@ namespace FSAdapter
             get
             {
                 string ret = "";
-                if (Direction == CALL_DIRECTION.inbound)
+                if (Direction == CALL_DIR.inbound)
                 {
                     ret = JsonData["Caller-Orig-Caller-ID-Number"].ToString();
                 }
-                else if (Direction == CALL_DIRECTION.outbound)
+                else if (Direction == CALL_DIR.outbound)
                 {
                     ret = JsonData["Caller-Destination-Number"].ToString();
                 }
