@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
-using Newtonsoft;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
+using System;
 
 namespace FSAdapter
 {
@@ -266,5 +260,44 @@ namespace FSAdapter
 
         public CLeaveConferenceEvent(string json) : base(json) { }
         public CLeaveConferenceEvent(JObject json) : base(json) { }
+    }
+
+    public class CSipRegister : CBaseEventArg
+    {
+        public string SipID
+        {
+            get
+            {
+                string ret = JsonData["username"].ToString();
+                return ret;
+            }
+        }
+        public string SipDomain
+        {
+            get
+            {
+                string ret = JsonData["domain_name"].ToString();
+                return ret;
+            }
+        }
+        public string FromIP
+        {
+            get
+            {
+                string ret = JsonData["network-ip"].ToString();
+                return ret;
+            }
+        }
+        public DateTime RegisterTime
+        {
+            get
+            {
+                string data = JsonData["Event-Date-Timestamp"].ToString();
+                Int64 milli_sec = Int64.Parse(data) / 1000;
+                return DateTimeOffset.FromUnixTimeMilliseconds(milli_sec).DateTime;
+            }
+        }
+        public CSipRegister(string json) : base(json) { }
+        public CSipRegister(JObject json) : base(json) { }
     }
 }

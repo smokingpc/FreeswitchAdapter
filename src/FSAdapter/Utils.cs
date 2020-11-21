@@ -1,11 +1,6 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.IO;
-
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-
 using System.Xml;
 
 namespace FSAdapter
@@ -57,19 +52,6 @@ namespace FSAdapter
 
     internal static class Utils
     { 
-        //目前只能吃microsecond與second兩種epoch
-        //internal static DateTime FromLinuxEpoch32(Int32 second)
-        //{
-        //    DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, 0);
-        //    return epoch.AddSeconds(second);
-        //}
-
-        //internal static DateTime FromLinuxEpoch64(Int64 microsecond)
-        //{
-        //    DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
-        //    return epoch.AddMilliseconds(microsecond / 1000).ToLocalTime();
-        //}
-
         //刪除指定目錄下所有檔案與sub-folders
         internal static void DeleteAll(string path)
         {

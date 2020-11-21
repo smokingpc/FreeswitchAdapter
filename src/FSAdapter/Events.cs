@@ -1,42 +1,30 @@
-﻿using System;
-using System.IO;
-using System.Reflection;
-using System.Collections.Generic;
+﻿using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Concurrent;
-using System.Linq;
-using System.Text;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net;
-using System.Net.Sockets;
-using Newtonsoft.Json.Linq;
 
 namespace FSAdapter
 {
-    public delegate void DelegateEventRaw(object sender, string json);
-    public delegate void DelegateEventCall(object sender, CCallEvent arg);
-    public delegate void DelegateEventAnswer(object sender, CAnswerEvent arg);
-    public delegate void DelegateEventHangUp(object sender, CHangUpEvent arg);
-    public delegate void DelegateEventConferenceCreate(object sender, CConferenceCreateEvent arg);
-    public delegate void DelegateEventConferenceDelete(object sender, CConferenceDeleteEvent arg);
-    public delegate void DelegateEventJoinConference(object sender, CJoinConferenceEvent arg);
-    public delegate void DelegateEventLeaveConference(object sender, CLeaveConferenceEvent arg);
-
     public partial class FSAdapter
     {
         private TcpClient SockEvent = null;
         private ManualResetEventSlim EventStop = new ManualResetEventSlim(false);
-        public event DelegateEventRaw OnEventRawString;
-        public event DelegateEventCall OnCall;
-        public event DelegateEventCall OnCallDestroy;
-        public event DelegateEventAnswer OnAnswer;
-        public event DelegateEventHangUp OnHangUp;
-        public event DelegateEventConferenceCreate OnRoomCreate;
-        public event DelegateEventConferenceDelete OnRoomDelete;
-        public event DelegateEventJoinConference OnJoinRoom;
-        public event DelegateEventLeaveConference OnLeaveRoom;
-        
+        public event EventHandler<string> OnEventRawString;
+        public event EventHandler<CCallEvent> OnCall;
+        public event EventHandler<CCallEvent> OnCallDestroy;
+        public event EventHandler<CAnswerEvent> OnAnswer;
+        public event EventHandler<CHangUpEvent> OnHangUp;
+        public event EventHandler<CConferenceCreateEvent> OnRoomCreate;
+        public event EventHandler<CConferenceDeleteEvent> OnRoomDelete;
+        public event EventHandler<CJoinConferenceEvent> OnJoinRoom;
+        public event EventHandler<CLeaveConferenceEvent> OnLeaveRoom;
+        public event EventHandler<CSipRegister> OnSipRegister;
+
         //FreeSwitch Event是Async event，所以先用queue存下來再依序處理，避免time issue
         //這個queue用來放event回傳的JSON string
         private ConcurrentQueue<string> EventJsonQueue = new ConcurrentQueue<string>();
@@ -171,41 +159,44 @@ namespace FSAdapter
                 OnEventRawString?.Invoke(this, json);
 
                 JObject jdata = null;
-                EVENT_MONITOR_TYPE type = ParseEventType(json, out jdata);
+                FS_EVENT_TYPE type = ParseEventType(json, out jdata);
 
                 //因為必須在conference裡面中轉各個customized header，不得已只好自己維護live channel的資料...
                 //收到CHANNEL_CREATE事件時就收錄channel資訊
                 //留在Conference Create時撈出來看 variable_sip_h_X-* 變數....
                 switch (type)
                 {
-                    case EVENT_MONITOR_TYPE.CALL_TO_SWITCH:
+                    case FS_EVENT_TYPE.CALL_TO_SWITCH:
                         OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
-                    case EVENT_MONITOR_TYPE.SWITCH_CALL_USER:
+                    case FS_EVENT_TYPE.SWITCH_CALL_USER:
                         OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
-                    case EVENT_MONITOR_TYPE.ANSWER:
+                    case FS_EVENT_TYPE.ANSWER:
                         OnAnswer?.Invoke(this, new CAnswerEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.HANGUP:
+                    case FS_EVENT_TYPE.HANGUP:
                         OnHangUp?.Invoke(this, new CHangUpEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.DESTROY_CALL:
+                    case FS_EVENT_TYPE.DESTROY_CALL:
                         OnCallDestroy?.Invoke(this, new CCallEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.CONFERENCE_CREATE:
+                    case FS_EVENT_TYPE.CONFERENCE_CREATE:
                         OnRoomCreate?.Invoke(this, new CConferenceCreateEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.CONFERENCE_DELETE:
+                    case FS_EVENT_TYPE.CONFERENCE_DELETE:
                         OnRoomDelete?.Invoke(this, new CConferenceDeleteEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.JOIN_CONFERENCE:
+                    case FS_EVENT_TYPE.JOIN_CONFERENCE:
                         OnJoinRoom?.Invoke(this, new CJoinConferenceEvent(jdata));
                         break;
-                    case EVENT_MONITOR_TYPE.LEAVE_CONFERENCE:
+                    case FS_EVENT_TYPE.LEAVE_CONFERENCE:
                         OnLeaveRoom?.Invoke(this, new CLeaveConferenceEvent(jdata));
+                        break;
+                    case FS_EVENT_TYPE.REGISTER:
+                        OnSipRegister?.Invoke(this, new CSipRegister(jdata));
                         break;
                     default:
                         Log.Warn($"Unsupported event type {type.ToString()}, skip it...");
@@ -235,6 +226,7 @@ namespace FSAdapter
             List<string> subclass_list = new List<string>() 
                 {
                     "conference::maintenance",
+                    "sofia::register",
                 };
 
             //refer to FreeSwitch online manual.

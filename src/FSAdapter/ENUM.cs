@@ -21,9 +21,10 @@ namespace FSAdapter
     }
 
     //event callback type to notify caller of FSController
-    public enum EVENT_MONITOR_TYPE
+    public enum FS_EVENT_TYPE
     {
         UNKNOWN = 0,
+        REGISTER = 900,             //SIP REGISTER
 
         CALL_TO_SWITCH = 1001,      //A-LEG
         SWITCH_CALL_USER = 1002,    //B-LEG
