@@ -159,43 +159,43 @@ namespace FSAdapter
                 OnEventRawString?.Invoke(this, json);
 
                 JObject jdata = null;
-                FS_EVENT_TYPE type = ParseEventType(json, out jdata);
+                EVENT_TYPE type = ParseEventType(json, out jdata);
 
                 //因為必須在conference裡面中轉各個customized header，不得已只好自己維護live channel的資料...
                 //收到CHANNEL_CREATE事件時就收錄channel資訊
                 //留在Conference Create時撈出來看 variable_sip_h_X-* 變數....
                 switch (type)
                 {
-                    case FS_EVENT_TYPE.CALL_TO_SWITCH:
+                    case EVENT_TYPE.CALL_TO_SWITCH:
                         OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
-                    case FS_EVENT_TYPE.SWITCH_CALL_USER:
+                    case EVENT_TYPE.SWITCH_CALL_USER:
                         OnCall?.Invoke(this, new CCallEvent(jdata));
                         break;
 
-                    case FS_EVENT_TYPE.ANSWER:
+                    case EVENT_TYPE.ANSWER:
                         OnAnswer?.Invoke(this, new CAnswerEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.HANGUP:
+                    case EVENT_TYPE.HANGUP:
                         OnHangUp?.Invoke(this, new CHangUpEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.DESTROY_CALL:
+                    case EVENT_TYPE.DESTROY_CALL:
                         OnCallDestroy?.Invoke(this, new CCallEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.CONFERENCE_CREATE:
+                    case EVENT_TYPE.CONFERENCE_CREATE:
                         OnRoomCreate?.Invoke(this, new CConferenceCreateEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.CONFERENCE_DELETE:
+                    case EVENT_TYPE.CONFERENCE_DELETE:
                         OnRoomDelete?.Invoke(this, new CConferenceDeleteEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.JOIN_CONFERENCE:
+                    case EVENT_TYPE.JOIN_CONFERENCE:
                         OnJoinRoom?.Invoke(this, new CJoinConferenceEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.LEAVE_CONFERENCE:
+                    case EVENT_TYPE.LEAVE_CONFERENCE:
                         OnLeaveRoom?.Invoke(this, new CLeaveConferenceEvent(jdata));
                         break;
-                    case FS_EVENT_TYPE.REGISTER:
+                    case EVENT_TYPE.REGISTER:
                         OnSipRegister?.Invoke(this, new CSipRegister(jdata));
                         break;
                     default:

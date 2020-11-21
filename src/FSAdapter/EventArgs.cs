@@ -6,9 +6,9 @@ namespace FSAdapter
     public class CBaseEventArg
     {
         public JObject JsonData { get; private set; }
-        public SW_EVENT_TYPE EventClass
+        public FS_DEF_EVENTS EventClass
         {
-            get { return (SW_EVENT_TYPE)Enum.Parse(typeof(SW_EVENT_TYPE), JsonData["Event-Name"].ToString()); }
+            get { return (FS_DEF_EVENTS)Enum.Parse(typeof(FS_DEF_EVENTS), JsonData["Event-Name"].ToString()); }
         }
         public string EventSubclass
         {

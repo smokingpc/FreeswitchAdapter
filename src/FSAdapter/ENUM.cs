@@ -21,7 +21,7 @@ namespace FSAdapter
     }
 
     //event callback type to notify caller of FSController
-    public enum FS_EVENT_TYPE
+    public enum EVENT_TYPE
     {
         UNKNOWN = 0,
         REGISTER = 900,             //SIP REGISTER
@@ -45,7 +45,7 @@ namespace FSAdapter
     }
 
     //freeswitch defined events
-    public enum SW_EVENT_TYPE
+    public enum FS_DEF_EVENTS
     {
         UNKNOWN = 0,
         ADD_SCHEDULE = 1,
